@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-=======
+
 создаем окружение
 ```bash
 python -m venv .venv
