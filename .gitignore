@@ -1,0 +1,13 @@
+#  Ignore all log files
+*.log
+
+# Ignore environment
+.venv
+.env
+
+# Ignore cache
+__pycache__/
+
+chats
+
+ngrok*
