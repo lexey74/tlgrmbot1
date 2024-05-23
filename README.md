@@ -28,6 +28,9 @@ mkdir chats
 nano .env
 ```
 
+Периодически проверяем IP адреса серверов Telegram
+
+
 запуск (путь должен указывать на эту машину, порт 8443)
 ```bash
 uvicorn app:app --workers 1 --host 0.0.0.0 --port 8443  # make run
