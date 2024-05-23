@@ -15,7 +15,20 @@ source .venv/bin/activate  # unix
 pip install -r requirements.txt
 ```
 
-запуск
+Создаем необходимые каталоги
+```bash
+mkdir logs
+mkdir chats
+```
+
+Копируем в каталог файл для работы с Google Console
+
+Настраиваем (или копируем) файл среды 
+```bash
+nano .env
+```
+
+запуск (путь должен указывать на эту машину, порт 8443)
 ```bash
 uvicorn app:app --workers 1 --host 0.0.0.0 --port 8443  # make run
 ```
