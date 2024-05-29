@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 from telegram.ext import (Application, CallbackContext, CommandHandler,
-                          MessageHandler, filters)
+                          MessageHandler, filters, ConversationHandler)
 
 from config import CHATS_PATH, TELEGRAM_BOT_TOKEN
 
@@ -14,6 +14,8 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger('app')
 
+# Определяем состояния для ConversationHandler
+ASKING_HOURS_CONFIRMATION = 0
 
 class TelegramService:
     bot_app: Application
@@ -24,8 +26,16 @@ class TelegramService:
         self._add_handlers(self.bot_app)
 
     def _add_handlers(self, app: Application):
-        app.add_handler(CommandHandler('start', self._start_command))
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_response))
+        conversation_handler = ConversationHandler(
+            entry_points=[CommandHandler('start', self._start_command)],
+            states={
+                ASKING_HOURS_CONFIRMATION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_response)
+                ]
+            },
+            fallbacks=[],
+        )
+        app.add_handler(conversation_handler)
 
     async def start(self):
         await self.bot_app.initialize()
@@ -35,12 +45,10 @@ class TelegramService:
     async def stop(self):
         await self.bot_app.stop()
 
-
-    async def send_message(self, chat_id, text):
+    async def send_message(self, chat_id, text, parse_mode=None):
         try:
             logger.info(f'Отправка сообщения в Telegram: {text}')
-            await self.bot_app.bot.send_message(chat_id=chat_id, text=text,
-                                                parse_mode=ParseMode.MARKDOWN)
+            await self.bot_app.bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
             logger.info('Сообщение отправлено успешно')
         except TelegramError as e:
             logger.error(f'Ошибка при отправке сообщения в Telegram: {e}')
@@ -55,20 +63,32 @@ class TelegramService:
         logger.info('Сохранен chat_id в файл')
         try:
             logger.info(f'Попытка отправить сообщение пользователю {user_name}')
-            await update.message.reply_text('Спасибо за запуск бота Mobicult 🎉!\n\nЯ сохранил код переписки, как только (в ближайшее время) его добавят мне в базу, я начну напоминать тебе о важных вещах 😉', parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(
+                'Спасибо за запуск бота Mobicult 🎉!\n\nЯ сохранил код переписки, как только (в ближайшее время) его добавят мне в базу, я начну напоминать тебе о важных вещах 😉',
+                parse_mode=ParseMode.MARKDOWN
+            )
             logger.info(f'Отправлено сообщение: Спасибо за запуск бота! пользователю {user_name}')
         except Exception as e:
             logger.error(f'Ошибка при отправке сообщения: {e}')
         logger.info(f'Chat ID {chat_id} для пользователя {user_name} сохранен')
 
-#        await self.scheduler.check_hours()
+        return ASKING_HOURS_CONFIRMATION  # Переход к состоянию ожидания подтверждения часов
 
     async def handle_response(self, update: Update, _: CallbackContext):
         response = update.message.text.lower()
         chat_id = update.message.chat_id
         logger.info(f'Получен ответ от {chat_id}: {response}')
         if 'да' in response or 'верно' in response:
-            await self.send_message(chat_id, 'Спасибо за подтверждение!\n\n Для нас очень важно, чтобы в трекере содержались честные часы, чтобы мы могли спланировать занятость команды.', parse_mode=ParseMode.MARKDOWN)
+            await self.send_message(
+                chat_id,
+                'Спасибо за подтверждение!\n\n Для нас очень важно, чтобы в трекере содержались честные часы, чтобы мы могли спланировать занятость команды.',
+                parse_mode=ParseMode.MARKDOWN
+            )
         elif 'нет' in response or 'неверно' in response:
-            await self.send_message(chat_id, 'Исправь, пожалуйста, часы в Redmine прямо сейчас 🙏 ! Через 15 минут я соберу все часы, которые будут в трекере и они попадут в отчет руководству.', parse_mode=ParseMode.MARKDOWN)
+            await self.send_message(
+                chat_id,
+                'Исправь, пожалуйста, часы в Redmine прямо сейчас 🙏 ! Через 15 минут я соберу все часы, которые будут в трекере и они попадут в отчет руководству.',
+                parse_mode=ParseMode.MARKDOWN
+            )
+        return ConversationHandler.END  # Завершение состояния ожидания
 
