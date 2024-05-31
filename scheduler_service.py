@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import logging
 import typing
-
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
@@ -11,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from httpx import AsyncClient, RequestError
 import pytz
 from telegram.constants import ParseMode
+from datetime import datetime, timedelta
 
 from config import (REDMINE_API_KEY, REDMINE_URL, SCHEDULER_MISSFIRE_GRACE_TIME, 
                     CRON_HOUR, CRON_MINUTE, HOURS_THRESHOLD, GOOGLE_SHEET_ID, GOOGLE_CREDENTIALS_JSON)
@@ -64,19 +64,25 @@ class ScheduleService:
             logger.info('Запуск проверки часов')
             employees = self._get_employees_from_google_sheet()
             logger.info(f'Названия столбцов DataFrame: {employees.columns.tolist()}')  # Вывод имен столбцов для отладки
-            yesterday = (datetime.datetime.now(TZ) - datetime.timedelta(days=1)).strftime('%Y%m%d')
-            logger.info(f'Собираем часы на дату {yesterday}')
+            yesterday = (datetime.now(TZ) - timedelta(days=1)).strftime('%Y%m%d')
+            todayme = datetime.now(TZ).strftime('%Y%m%d')
+            logger.info(f'Сегодня {todayme}')
+            logger.info(f'Вчера {yesterday}')
   # Преобразуем дату из ГГГГММДД в ГГГГ-ММ-ДД, который понимает redmine по API
-            year = yesterday[:4]
-            month = yesterday[4:6]
-            day = yesterday[6:]
-            yesterday = f"{year}-{month}-{day}"
-            logger.info(f'Дата после преобразования {yesterday}')
+  #          year = yesterday[:4]
+  #          month = yesterday[4:6]
+  #          day = yesterday[6:]
+  #          yesterday = f"{year}-{month}-{day}"
+  #          logger.info(f'Дата после преобразования {yesterday}')
 
 
-            if not await self._is_workday(yesterday):
-                logger.info(f'{yesterday} - нерабочий день')
+            if not await self._is_workday(todayme):
+                logger.info(f'{todayme} - сегодня нерабочий день. Ничего не делаем!')
                 return
+ # Ищем предыдущий раюочий день
+            yesterday = await self._last_workday(yesterday)
+# Какую дату нашли и будем на нее запрашивать трудозатраты в redmine
+            logger.info(f'Дата после поиска предыдущего рабочего дня {yesterday}')
 
             for _, employee in employees.iterrows():
                 user_id = employee['user_id']
@@ -108,6 +114,23 @@ class ScheduleService:
                 return response.text == '0'
         except RequestError as error:
             logger.error(error)
+
+
+    async def _last_workday(self, date_str):
+        date = datetime.strptime(date_str, '%Y%m%d')
+
+        while True:
+            try:
+                async with AsyncClient() as client:
+                    response = await client.get(url=f'https://isdayoff.ru/{date.strftime("%Y%m%d")}')
+                    if response.text == '0':
+                        return date.strftime('%Y-%m-%d')
+            except RequestError as error:
+                logger.error(error)
+
+            date -= timedelta(days=1)
+
+
 
     async def _get_hours_from_redmine(self, user_id, date):
         try:
