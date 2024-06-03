@@ -96,7 +96,7 @@ class ScheduleService:
                 logger.info(f'{name} отработал {hours} часов, требуемые часы: {required_hours}')
 
                 if hours < required_hours - HOURS_THRESHOLD:
-                    message = (f'{name}, правильно ли я вижу, что ты затрекал(а) {hours} часов за вчерашний день в Redmine?\n\n'
+                    message = (f'{name}, правильно ли я вижу, что ты затрекал(а) {hours} часов за {yesterday} в Redmine?\n\n'
                                'Если все верно - ты молодец, ничего корректировать не нужно!\n\n'
                                'Если картина не соответствует действительности - исправь, пожалуйста, часы в Redmine прямо сейчас 🙏 ! '
                                'Через 15 минут я соберу все часы, которые будут в трекере и они попадут в отчет руководству 🧐 .')
@@ -137,7 +137,9 @@ class ScheduleService:
             async with AsyncClient() as client:
                 response = await client.get(f'{REDMINE_URL}/time_entries.json?spent_on={date}',
                                             headers={'X-Redmine-API-Key': REDMINE_API_KEY})
+
                 data = response.json()
+                logger.info('Запрос Redmine =>> {request}')
 
                 # Фильтрация записей по user_id
                 total_hours = sum(entry['hours'] for entry in data['time_entries'] if entry['user']['id'] == user_id)
