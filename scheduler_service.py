@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import logging
 import typing
 import pandas as pd
@@ -64,10 +63,8 @@ class ScheduleService:
             logger.info('Запуск проверки часов')
             employees = self._get_employees_from_google_sheet()
             logger.info(f'Названия столбцов DataFrame: {employees.columns.tolist()}')  # Вывод имен столбцов для отладки
-            yesterday = (datetime.now(TZ) - timedelta(days=1)).strftime('%Y%m%d')
             todayme = datetime.now(TZ).strftime('%Y%m%d')
             logger.info(f'Сегодня {todayme}')
-            logger.info(f'Вчера {yesterday}')
   # Преобразуем дату из ГГГГММДД в ГГГГ-ММ-ДД, который понимает redmine по API
   #          year = yesterday[:4]
   #          month = yesterday[4:6]
@@ -79,11 +76,16 @@ class ScheduleService:
             if not await self._is_workday(todayme):
                 logger.info(f'{todayme} - сегодня нерабочий день. Ничего не делаем!')
                 return
- # Ищем предыдущий раюочий день
+ # Вычитаем 1 день
+            yesterday = (datetime.now(TZ) - timedelta(days=1)).strftime('%Y%m%d')
+            logger.info(f'Вчера {yesterday}')
+ # Ищем предыдущий рабочий день функцией
             yesterday = await self._last_workday(yesterday)
 # Какую дату нашли и будем на нее запрашивать трудозатраты в redmine
-            logger.info(f'Дата после поиска предыдущего рабочего дня {yesterday}')
-
+            logger.info(f'Дата предыдущего рабочего дня {yesterday}')
+# Получаем ответ на дату
+            redmine_answer = await self._get_hours_from_redmine(yesterday)
+#Цикл по всем пользователям уже без запроса к редмайн
             for _, employee in employees.iterrows():
                 user_id = employee['user_id']
                 chat_id = employee['telegram_user_name']
@@ -92,7 +94,7 @@ class ScheduleService:
 
                 logger.info(f'Проверка часов для {name} (user_id: {user_id})')
 
-                hours = await self._get_hours_from_redmine(user_id, yesterday)
+                hours = await self._find_hours_for_user(user_id, redmine_answer)
                 logger.info(f'{name} отработал {hours} часов, требуемые часы: {required_hours}')
 
                 if hours < required_hours - HOURS_THRESHOLD:
@@ -130,21 +132,20 @@ class ScheduleService:
 
             date -= timedelta(days=1)
 
-
-
-    async def _get_hours_from_redmine(self, user_id, date):
+    async def _get_hours_from_redmine(self, date):
         try:
             async with AsyncClient() as client:
                 response = await client.get(f'{REDMINE_URL}/time_entries.json?spent_on={date}',
                                             headers={'X-Redmine-API-Key': REDMINE_API_KEY})
-
+                logger.info('Ответ Redmine [%s] =>> %s', response.status_code, response.text)
                 data = response.json()
-                logger.info('Запрос Redmine =>> {request}')
+                return data
+        except RequestError as error:
+            logger.error(error)
 
-                # Фильтрация записей по user_id
-                total_hours = sum(entry['hours'] for entry in data['time_entries'] if entry['user']['id'] == user_id)
-                return round(total_hours, 2)
-        except Exception as e:
-            logger.error(f'Ошибка при получении данных из Redmine для user_id {user_id} и date {date}: {e}')
-            return 0.0
+
+    async def _find_hours_for_user(self, user_id, data):
+         # Фильтрация записей по user_id
+        total_hours = sum(entry['hours'] for entry in data['time_entries'] if entry['user']['id'] == user_id)
+        return round(total_hours, 2)
 

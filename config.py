@@ -46,7 +46,7 @@ LOGGER_CONFIG = {
     'formatters': {
         'main_formatter': {
             'format': (
-                '%(levelname)1.1s %(asctime)s %(name)s - %(message).600s'
+                '%(levelname)1.1s %(asctime)s %(name)s - %(message).20600s'
                 ' - %(filename)s - %(funcName)s - %(lineno)s'
             ),
             'datefmt': "%d.%m %H:%M:%S",
